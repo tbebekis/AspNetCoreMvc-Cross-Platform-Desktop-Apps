@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netcoreapp3.1</TargetFramework>
+        <ApplicationIcon />
+        <OutputType>WinExe</OutputType>
+        <StartupObject />
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
+        <PackageReference Include="PuppeteerSharp" Version="2.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="wwwroot\**">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+</Project>
