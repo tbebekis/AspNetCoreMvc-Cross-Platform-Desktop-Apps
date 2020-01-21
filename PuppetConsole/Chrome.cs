@@ -139,7 +139,7 @@ namespace Tripous
 
             Data.Status = System.Net.HttpStatusCode.OK;
 
-            await e.Request.RespondAsync(Data);
+            await e.Request.RespondAsync(Data).ConfigureAwait(false);
 
         }
 
@@ -238,7 +238,7 @@ namespace Tripous
                 };
 
                 // launch Chrome
-                Browser = await Puppeteer.LaunchAsync(LaunchOptions);
+                Browser = await Puppeteer.LaunchAsync(LaunchOptions).ConfigureAwait(false);
 
                 // get the main tab page
                 Page[] Pages = await Browser.PagesAsync().ConfigureAwait(false);
@@ -247,9 +247,9 @@ namespace Tripous
                 // event handler for static files
                 if (!IsAspNetCoreApp)
                 {
-                    await TabPage.SetRequestInterceptionAsync(true);
+                    await TabPage.SetRequestInterceptionAsync(true).ConfigureAwait(false);
                     TabPage.Request += StaticRequestHandler;
-                    await TabPage.GoToAsync(Chrome.HomeUrl, WaitUntilNavigation.DOMContentLoaded);
+                    await TabPage.GoToAsync(Chrome.HomeUrl, WaitUntilNavigation.DOMContentLoaded).ConfigureAwait(false);
                 }
  
                 // event handler for close
