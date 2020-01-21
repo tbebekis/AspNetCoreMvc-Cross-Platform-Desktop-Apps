@@ -27,7 +27,7 @@ There are many answers to this question. A few of them are following:
 - [Positron](https://github.com/CenterEdge/Positron)
 
 ## Description of this solution
-The solution is based on the idea that Google's Chrome browser is installed on a very high percent of machines running either MS Windows or Linux or MacOS. At the same time .Net Core and AspNet Core run on all of those OSes.
+This solution is based on the idea that Google's Chrome browser is installed on a very high percent of machines running either MS Windows or Linux or MacOS. At the same time .Net Core and AspNet Core run on all of those OSes.
 
 What is needed is a way to first create an instance of the Chrome browser and then instruct it to navigate to a "Home" url.
 
@@ -38,7 +38,7 @@ And then there is a C# port of the Puppeteer, the [Puppeteer-Sharp](https://gith
 Here is the description of Puppeteer from github.
 > Puppeteer is a Node library which provides a high-level API to control Chrome or Chromium over the [DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/). Puppeteer runs **headless** by default, but can be configured to run full (non-headless) Chrome or Chromium.
 
-This solution is not based on a [Headless Chrome browser](https://en.wikipedia.org/wiki/Headless_browser). Instead it uses a normal Chrome window bar with a single tab page and no address bar at all. The Puppeteer or Puppeteer-Sharp can run the Chrome browser in such a way.
+This solution is not based on a [Headless Chrome browser](https://en.wikipedia.org/wiki/Headless_browser). Instead it uses a normal Chrome window with a single tab page and no address bar at all. The Puppeteer and of course the Puppeteer-Sharp can run the Chrome browser in such a way.
 
 ## A C# class to control the Chrome browser
 
@@ -77,7 +77,7 @@ public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
 }
 ```
 
-The flag passed to the `Launch()` indicates the type of tha application. True means AspNet Core, while false means a plain HTML application.
+The flag passed to the `Launch()` indicates the type of the application. True means AspNet Core, while false means a plain HTML application.
 
 The caller may pass information to the `Launch()` method through an instance of the  `ChromeStartOptions` class. The `ChromePath` is such a bit of information, denoting the path where Chrome can be found. I plan to study the code of the [Chrome Launcher](https://github.com/GoogleChrome/chrome-launcher) project and fill this gap. 
 
