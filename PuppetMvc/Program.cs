@@ -25,9 +25,7 @@ namespace PuppetMvc
 
         public static void Main(string[] args)
         {
-            CreateHostBuilder(args)
-                .Build() 
-                .Run();
+            CreateHostBuilder(args).Build().Run();
         } 
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
@@ -36,13 +34,14 @@ namespace PuppetMvc
                 {                    
                     webBuilder.ConfigureKestrel(o =>
                     {
-                        o.Listen(IPAddress.Loopback, 5000); //HTTP port
+                        o.Listen(IPAddress.Loopback, Chrome.Port); //HTTP port
                     })
                     .UseStartup<Startup>();
                 });
 
- 
     }
 
- 
+
+
+
 }

@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using System.IO;
+using System.Net.NetworkInformation;
+using System.Net;
 
 using PuppeteerSharp;
 
@@ -24,10 +27,11 @@ namespace Tripous
     /// </summary>
     static public class Chrome
     {
-
-        /* private */
-
-        // https://peter.sh/experiments/chromium-command-line-switches/
+        #region Constants
+        /// <summary>
+        /// Default command line switches
+        /// <para>FROM: https://peter.sh/experiments/chromium-command-line-switches/</para>
+        /// </summary>
         static readonly string[] DefaultArgs = {
             "--disable-background-networking",
             "--disable-background-timer-throttling",
@@ -42,8 +46,7 @@ namespace Tripous
             "--metrics-recording-only",
             "--no-first-run",
             "--safebrowsing-disable-auto-update",
-            "--force-app-mode",
-            "--ipc-connection-timeout=5",
+            "--force-app-mode",            
 
             "--aggressive-cache-discard",
             "--disable-cache",
@@ -52,7 +55,6 @@ namespace Tripous
             "--disk-cache-size=0",
         };
  
-
         static Dictionary<string, string> ImageContentTypes = new Dictionary<string, string>()
         {
             {"jpeg", "image/jpeg"}, {"jpg", "image/jpeg"}, {"svg", "image/svg+xml"}, {"gif", "image/gif"}, {"webp", "image/webp"},
@@ -65,7 +67,9 @@ namespace Tripous
         };
 
         const string SStaticApp = "StaticApp";
- 
+
+        #endregion
+
         /* private */
         /// <summary>
         /// Returns the path of the chrome.exe
@@ -83,46 +87,22 @@ namespace Tripous
 
             ResponseData Data;
 
-            /*
-                         if (!IsStaticApp)
-                        {
+            Uri Uri = new Uri(e.Request.Url);
+            string FileName = Uri.LocalPath;
 
+            if (string.IsNullOrWhiteSpace(FileName) || FileName == "/")
+            {
+                Uri = new Uri(HomeUrl);
+                FileName = Uri.LocalPath;
+            }                
 
-                            string HtmlText = $@"
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset='utf-8' />
-                <title></title>
-            </head>
-            <body>
-                <script type='text/javascript'>
-                setTimeout(() => {{ window.location.href = '{HomeUrl}'; }}, 1500);
-                </script>
-            </body>
-            </html>
-            ";
-                            Data = new ResponseData();
-                            Data.ContentType = "text/html";
-                            Data.Body = HtmlText;
-                            Data.Status = System.Net.HttpStatusCode.OK;
-
-                            await e.Request.RespondAsync(Data);
-
-                            return;
-                        }
-                         */
-
- 
-            var url = new Uri(e.Request.Url);
-            var FileName = url.LocalPath;
             if (FileName.StartsWith("/"))
                 FileName = FileName.Remove(0, 1);
             FileName = FileName.Replace(@"/", @"\");
 
             int Index = FileName.LastIndexOf(".");
             string Extension = FileName.Substring(Index + 1);
-            string FilePath = Path.Combine(RootFolder, FileName);
+            string FilePath = Path.Combine(ContentFolder, FileName);
             if (!File.Exists(FilePath))
                 //throw new ApplicationException($"File not found: {FilePath}");
                 return;
@@ -163,14 +143,61 @@ namespace Tripous
 
         }
 
+        /* construction */
+        /// <summary>
+        /// Static constructor
+        /// </summary>
+        static Chrome()
+        {
+            Port = GetNextFreePort();
+        }
+
+
         /* public */
+        /// <summary>
+        /// Writes log to a file. Used for debugging.
+        /// </summary>
         static public void Log(string Text)
         {
             string FilePath = Path.Combine(Path.GetDirectoryName(typeof(Chrome).Assembly.Location), "LOG.TXT");
             Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " ==> " + Text + Environment.NewLine;
             File.AppendAllText(FilePath, Text, Encoding.UTF8);
         }
+        /// <summary>
+        /// Returns the next free port.
+        /// <para>FROM: https://gist.github.com/jrusbatch/4211535 </para>
+        /// </summary>
+        static public int GetNextFreePort(int startingPort = 4500)
+        {
+            var properties = IPGlobalProperties.GetIPGlobalProperties();
 
+            //getting active connections
+            var tcpConnectionPorts = properties.GetActiveTcpConnections()
+                                .Where(n => n.LocalEndPoint.Port >= startingPort)
+                                .Select(n => n.LocalEndPoint.Port);
+
+            //getting active tcp listners - WCF service listening in tcp
+            var tcpListenerPorts = properties.GetActiveTcpListeners()
+                                .Where(n => n.Port >= startingPort)
+                                .Select(n => n.Port);
+
+            //getting active udp listeners
+            var udpListenerPorts = properties.GetActiveUdpListeners()
+                                .Where(n => n.Port >= startingPort)
+                                .Select(n => n.Port);
+
+            var port = Enumerable.Range(startingPort, ushort.MaxValue)
+                .Where(i => !tcpConnectionPorts.Contains(i))
+                .Where(i => !tcpListenerPorts.Contains(i))
+                .Where(i => !udpListenerPorts.Contains(i))
+                .FirstOrDefault();
+
+            return port;
+        }
+
+        /// <summary>
+        /// Launches Chrome using the specified options 
+        /// </summary>
         static public void Launch(ChromeStartOptions Options, Action Closed = null)
         {
             LaunchAsync(Options, Closed).GetAwaiter().GetResult();
@@ -183,20 +210,19 @@ namespace Tripous
             if (Browser == null)
             {
                 // prepare options
-                IsStaticApp = Options.Port == 0;
-                if (!string.IsNullOrWhiteSpace(Options.StaticRootFolder))
+                IsAspNetCoreApp = Options.IsAspNetCoreApp;
+
+                if (!string.IsNullOrWhiteSpace(Options.ContentFolder))
                 {
-                    RootFolder = Path.GetFullPath(Options.StaticRootFolder);
-                }
+                    ContentFolder = Path.GetFullPath(Options.ContentFolder);
+                } 
 
-                Port = Options.Port;
-
-                HomeUrl = IsStaticApp ? $@"http://{SStaticApp}/{Options.HomeUrl}" : $"http://localhost:{Port}"; 
+                HomeUrl = !IsAspNetCoreApp ? $@"http://{SStaticApp}/{Options.HomeUrl}" : $"http://localhost:{Port}"; 
 
                 List<string> ArgList = new List<string>(DefaultArgs);
 
                 // --app=data:text/html,TITLE
-                string AppValue = IsStaticApp ? "data:text/html, loading..." : Chrome.HomeUrl;
+                string AppValue = !IsAspNetCoreApp ? "data:text/html, loading..." : Chrome.HomeUrl;
 
                 ArgList.Add($"--app={AppValue}");   // The --app= argument opens Chrome in app mode that is no fullscreen, no url bar, just the window
                 ArgList.Add($"--window-size={Options.Width},{Options.Height}");
@@ -219,7 +245,7 @@ namespace Tripous
                 TabPage = Pages[0];
  
                 // event handler for static files
-                if (IsStaticApp)
+                if (!IsAspNetCoreApp)
                 {
                     await TabPage.SetRequestInterceptionAsync(true);
                     TabPage.Request += StaticRequestHandler;
@@ -239,28 +265,47 @@ namespace Tripous
             }
         }
  
-
- 
-
-        /* properties */  
-        static public BrowserContext Context { get; private set; }
-        static public Browser Browser { get; private set; }
-        static public Page TabPage { get; private set; }
+        /* properties */
+        /// <summary>
+        /// True after the browser is constructed,
+        /// </summary>
         static public bool IsStarted { get { return TabPage != null; } }
+        /// <summary>
+        /// The <see cref="BrowserContext"/> of the browser.
+        /// </summary>
+        static public BrowserContext Context { get; private set; }
+        /// <summary>
+        /// The browser
+        /// </summary>
+        static public Browser Browser { get; private set; }
+        /// <summary>
+        /// The single tab page of the browser where content is displayed.
+        /// </summary>
+        static public Page TabPage { get; private set; }
+ 
+        /// <summary>
+        /// When true, indicates that this is an AspNet Core app.
+        /// <para>When false, indicates that this is a normal HTML "static" app, comprised of static files (html, javascript and css) </para>
+        /// </summary>
+        static public bool IsAspNetCoreApp { get; private set; }
+        /// <summary>
+        /// For non AspNet Core apps only. 
+        /// <para>The home relative url, e.g. Default.html, Index.html or Home.html.</para>
+        /// </summary>
         static public string HomeUrl { get; private set; }
+        /// <summary>
+        /// Optional. For non AspNet Core apps only. 
+        /// <para> Indicates the root content folder where static files (html, js, css) are placed.</para>
+        /// </summary>
+        static public string ContentFolder { get; private set; }
+        /// <summary>
+        /// For non AspNet Core apps only. 
+        /// <para>The Port where the Kestrel server should listen. It is computed automatically.</para>
+        /// </summary>
         static public int Port { get; private set; }
-        static public bool IsStaticApp { get; private set; }
-        static public string RootFolder { get; private set; }
     }
 
-
-
-
-
-
-
-
-
+ 
 
 
     /// <summary>
@@ -272,21 +317,31 @@ namespace Tripous
         /// <summary>
         /// Constructor
         /// </summary>
-        public ChromeStartOptions()
+        public ChromeStartOptions(bool IsAspNetCoreApp = true)
         {
+            this.IsAspNetCoreApp = IsAspNetCoreApp;
         }
 
         /* properties */
+        /// <summary>
+        /// When true, the default, indicates that this is an AspNet Core app.
+        /// <para>When false, indicates that this is a normal HTML "static" app, comprised of static files (html, javascript and css) </para>
+        /// </summary>
+        public bool IsAspNetCoreApp { get; set; } = true;
         /// <summary>
         /// The path where Chrome is installed in this machine.
         /// </summary>
         public string ChromePath { get; set; } = "";
         /// <summary>
-        /// The home relative url.
-        /// <para>For an AspNetCore MVC could be Home\Index</para>
-        /// <para>For an HTML app with static files, could be Index.html</para>
+        /// For non AspNet Core apps only. 
+        /// <para>The home relative url, e.g. Default.html, Index.html or Home.html.</para>
         /// </summary>
-        public string HomeUrl { get; set; }
+        public string HomeUrl { get; set; } = @"Index.html";
+        /// <summary>
+        /// Optional. For non AspNet Core apps only. 
+        /// <para> Indicates the root content folder where static files (html, js, css) are placed.</para>
+        /// </summary>
+        public string ContentFolder { get; set; } = "wwwroot";
         /// <summary>
         /// Optional. The initial X location of the browser
         /// </summary>
@@ -303,16 +358,8 @@ namespace Tripous
         /// Optional. The initial height of the browser
         /// </summary>
         public int Height { get; set; } = 768;
-        /// <summary>
-        /// Optional. A root folder where static files (html, js, css) are placed.
-        /// <para>NOTE: Used only with a "static" app.</para>
-        /// </summary>
-        public string StaticRootFolder { get; set; } = "wwwroot";
-        /// <summary>
-        /// Required. The SSL Port. It is defined in the launchSettings.json file.
-        /// <para>NOTE: Used only with an AspNetCore MVC app.</para>
-        /// </summary>
-        public int Port { get; set; }
+
+
     }
 
 

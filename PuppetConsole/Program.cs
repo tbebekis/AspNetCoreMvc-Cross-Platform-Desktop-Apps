@@ -9,25 +9,15 @@ using Tripous;
 namespace PuppetConsole
 {
     class Program
-    {
- 
+    { 
         static void Main(string[] args)
         {
-            ChromeStartOptions Options = new ChromeStartOptions()
-            {
-                HomeUrl = @"Index.html"
-            };
-
-            ManualResetEvent CloseEvent = new ManualResetEvent(false);
-            Chrome.Launch(Options, () => {
+            ManualResetEvent CloseEvent = new ManualResetEvent(false);            
+            Chrome.Launch(new ChromeStartOptions(false), () => {
                 CloseEvent.Set();
-            });
+            });            
             CloseEvent.WaitOne();
-
         }
-
-
-
  
     }
 }

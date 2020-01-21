@@ -57,16 +57,11 @@ namespace PuppetMvc
                     pattern: "{controller=Home}/{action=Index}/{id?}");
             });
 
-            // Chrome
-            ChromeStartOptions Options = new ChromeStartOptions()
-            {
-                Port = 5000, //44392,
-            };
-            Chrome.Launch(Options, () => {
+            // Chrome           // Port = 5000, //44392,
+            Chrome.Launch(new ChromeStartOptions(true), () => {
                 IHostApplicationLifetime LifeTime = app.ApplicationServices.GetService(typeof(IHostApplicationLifetime)) as IHostApplicationLifetime;
                 LifeTime.StopApplication();
             });
-
 
         }
 
