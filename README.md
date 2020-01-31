@@ -1,4 +1,6 @@
-# Cross-platform Desktop applications using AspNet Core or plain static HTML files.   
+﻿# Cross-platform Desktop applications using AspNet Core or plain static HTML files.   
+
+A way to develop cross-platform Desktop GUI applications using C# and [Chrome](https://en.wikipedia.org/wiki/Google_Chrome) as a very light alternative to [Electron](https://en.wikipedia.org/wiki/Electron_(software_framework)) and [Electron.NET](https://github.com/ElectronNET/Electron.NET) libraries.
 
 **Source code** can be found at [github](https://github.com/tbebekis/AspNetCoreMvc-Cross-Platform-Desktop-Apps)
 
@@ -31,9 +33,9 @@ This solution is based on the idea that Google's Chrome browser is installed on 
 
 What is needed is a way to first create an instance of the Chrome browser and then instruct it to navigate to a "Home" url.
 
-There is already a way to do the above: the [Mathias Bynens's](https://github.com/mathiasbynens) excellent [Puppeteer](https://github.com/puppeteer/puppeteer) NodeJS library. Google provides a [portal](https://developers.google.com/web/tools/puppeteer) about Puppeteer, full of valuable information and examples.
+There is already a way to do the above with [NodeJS](https://en.wikipedia.org/wiki/Node.js): the [Mathias Bynens's](https://github.com/mathiasbynens) excellent [Puppeteer](https://github.com/puppeteer/puppeteer) NodeJS library. Google provides a [portal](https://developers.google.com/web/tools/puppeteer) about Puppeteer, full of valuable information and examples.
 
-And then there is a C# port of the Puppeteer, the [Puppeteer-Sharp](https://github.com/kblok/puppeteer-sharp) by [Darío Kondratiuk](https://github.com/kblok). Many thanks to Darío.
+And then there is a C# port of the [Puppeteer](https://github.com/puppeteer/puppeteer), the [Puppeteer-Sharp](https://github.com/kblok/puppeteer-sharp) by [Darío Kondratiuk](https://github.com/kblok). Many thanks to Darío.
 
 Here is the description of Puppeteer from github.
 > Puppeteer is a Node library which provides a high-level API to control Chrome or Chromium over the [DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/). Puppeteer runs **headless** by default, but can be configured to run full (non-headless) Chrome or Chromium.
@@ -42,12 +44,35 @@ This solution is not based on a [Headless Chrome browser](https://en.wikipedia.o
 
 ## A C# class to control the Chrome browser
 
-It is a static class named [Chrome](https://github.com/tbebekis/AspNetCoreMvc-Cross-Platform-Desktop-Apps/blob/master/PuppetConsole/Chrome.cs) with less than 400 lines of code. It provides the `Launch()` method
+This project contains a static class named [Chrome](https://github.com/tbebekis/AspNetCoreMvc-Cross-Platform-Desktop-Apps/blob/master/PuppetConsole/Chrome.cs) with less than 400 lines of code, which is used in launching Chrome and navigating to the first HTML page. For that, the Chrome class provides the `Launch()` method
 
 ```
 static public void Launch(ChromeStartOptions Options, Action Closed = null)
 ```
-which accepts an Options object and a call-back to call when the browser closes.
+which accepts an Options object and a call-back to call when the browser closes. Here is the `ChromeStartOptions` class.
+
+```
+    public class ChromeStartOptions
+    {
+        public ChromeStartOptions(bool IsAspNetCoreApp = true)
+        {
+            this.IsAspNetCoreApp = IsAspNetCoreApp;
+        }
+
+        public bool IsAspNetCoreApp { get; set; } = true;
+        public string ChromePath { get; set; } = "";
+        public string HomeUrl { get; set; } = @"Index.html";
+        public string ContentFolder { get; set; } = "wwwroot";
+        public int Left { get; set; } = 300;
+        public int Top { get; set; } = 150;
+        public int Width { get; set; } = 1024;
+        public int Height { get; set; } = 768;
+    }
+```
+
+The `HomeUrl` and `ContentFolder` properties are used with a static HTML application, not with an AspNet Core application.
+
+## Use Chrome with a .Net Core Console application (static Web Application)
 
 Here is how to use it in a .Net Core Console application in order to present a plain HTML application as a Desktop application.
 
@@ -61,6 +86,8 @@ static void Main(string[] args)
     CloseEvent.WaitOne();
 }
 ```
+
+## Use Chrome with an AspNet Core MVC application
 And here is how to call it from inside the `Configure()` method of a `Startup` AspNet Core class in order to present an AspNet Core MVC application as a Desktop application.
 
 ```
@@ -77,16 +104,21 @@ public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
 }
 ```
 
-The flag passed to the `Launch()` indicates the type of the application. True means AspNet Core, while false means a plain HTML application.
+## The Launch() method of the Chrome class.
+The flag passed to the `Launch()` method, through the `ChromeStartOptions` instance, indicates the type of the application. True means AspNet Core, while false means a plain static HTML application.
 
-The caller may pass information to the `Launch()` method through an instance of the  `ChromeStartOptions` class. The `ChromePath` is such a bit of information, denoting the path where Chrome can be found. I plan to study the code of the [Chrome Launcher](https://github.com/GoogleChrome/chrome-launcher) project and fill this gap. 
+The caller may pass more information to the `Launch()` method through the instance of the  `ChromeStartOptions` class. The `ChromePath` is such a bit of information, denoting the path where Chrome can be found. 
+
+Right now the `Crome` class does its best in order to find where Chrome browser is installed on Windows and Linux. I plan to study the code of the [Chrome Launcher](https://github.com/GoogleChrome/chrome-launcher) project and try to deal better with this problem. 
 
 The `Chrome.Launch()` method calls the `Chrome.LaunchAsync()` method which does the following:
 - processes the passed in options
 - prepares a Puppeteer-Sharp's `LaunchOptions` instance. 
-- calls the `Puppeteer.LaunchAsync(options)` method and gets back a `Browser` instance. If this is an AspNet Core application then the options instance already contains the base Url. Else this step is postponed for a later time. Now Chrome is already up and running, showing a single tab `Page`.
-- gets a reference to that `Page`.
-- if this is **not** an AspNet Core application links an event handler to the `Page` in order to fulfill incoming requests, since there is no web server. And right after that calls `Page.GoToAsync(url)` passing the "Home" Url of the application.
+- calls the `Puppeteer.LaunchAsync(options)` method and gets back a `Browser` instance. 
+- if this is an AspNet Core application then that options instance is prepared and already contains the initial Url. Else this step is postponed for a later time. 
+- now Chrome is already up and running, showing a single tab `Page`.
+- the code gets a reference to that `Page`.
+- if this is **not** an AspNet Core application, links an event handler to that `Page` in order to fulfill incoming requests, since there is no web server. And right after that calls `Page.GoToAsync(url)` passing the "Home" Url of the application.
 - in the next step, and in both cases, links another event handler to the `Page` in order to handle the closing of the browser.
 
 Here is the full code of the `Chrome.LaunchAsync()` method.
@@ -241,19 +273,26 @@ The only difference from the template code is that it configures [Kestrel](https
 
 Here is the application running.
 
+
 ![MvcApp](MvcApp.png)
+
+
 
 ### Publish the AspNet Core demo application 
 
 Here is the publish settings.
 
+
 ![MvcAppPublish](MvcAppPublish.png)
+
 
 The above creates a [Self-Contained](https://docs.microsoft.com/en-us/dotnet/core/deploying/) deployment, in a single file, after "trimming" any unused assemblies.
 
 Here is the content of the `Publish` folder. The *.exe is 43 MB large and contains everything, AspNet Core included. Only the static files are in the `wwwroot` folder.
 
+
 ![MvcAppDeploy](MvcAppDeploy.png)
+
 
 And the best of all: double-clicking the *.exe runs the application inside the Chrome browser.
 

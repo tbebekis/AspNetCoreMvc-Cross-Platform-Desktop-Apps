@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Net.NetworkInformation;
 using System.Net;
+using System.Runtime.InteropServices;
 
 using PuppeteerSharp;
 
@@ -18,7 +19,7 @@ namespace Tripous
     /// Helper class used in presenting Web applications as Desktop applications inside a Google Chrome window. 
     /// <para>A very light alternative to Electron and Electron.NET libraries.</para>
     /// <para>It uses the Chrome browser currently installed in the machine. </para>
-    /// <para>Can handle two types of applications: 1. AspNet Core MVC and 2. an ordinary HTML Application comprised of static files (html, javascript and css)</para>
+    /// <para>Can handle two types of applications: 1. AspNet Core MVC and 2. an ordinary HTML Applications comprised of static files (html, javascript and css)</para>
     /// <para>Uses the excellent PuppeteerSharp library found at https://github.com/kblok/puppeteer-sharp </para>
     /// <para>WARNING: For an AspNet Core MVC application to work properly, 
     /// the OutOfProcess hosting model should be defined in the *.csproj file with the AspNetCoreHostingModel directive.
@@ -53,8 +54,14 @@ namespace Tripous
             "--disable-application-cache",
             "--disable-offline-load-stale-cache",
             "--disk-cache-size=0",
+
+            "--disable-features=TranslateUI",
+            "--disable-component-extensions-with-background-pages",
+            "--no-default-browser-check",
         };
+
  
+
         static Dictionary<string, string> ImageContentTypes = new Dictionary<string, string>()
         {
             {"jpeg", "image/jpeg"}, {"jpg", "image/jpeg"}, {"svg", "image/svg+xml"}, {"gif", "image/gif"}, {"webp", "image/webp"},
@@ -74,15 +81,80 @@ namespace Tripous
         /// <summary>
         /// Returns the path of the chrome.exe
         /// </summary>
-        static string FindChromPath()
+        static string GetChromPath()
         {
-            // TODO: https://github.com/GoogleChrome/chrome-launcher has code for finding Chrome in various OSes
-            return @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe";
+            string Result = string.Empty;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                string SuffixPath = @"Google\Chrome\Application\chrome.exe";
+
+                List<string> PrefixPaths = new List<string>
+                {
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                };
+
+                string Folder = Environment.ExpandEnvironmentVariables("%ProgramW6432%");
+                if (!string.IsNullOrWhiteSpace(Folder) && Directory.Exists(Folder))
+                    PrefixPaths.Add(Folder);
+
+                Folder = Environment.ExpandEnvironmentVariables("%ProgramFiles(x86)%");
+                if (!string.IsNullOrWhiteSpace(Folder) && Directory.Exists(Folder))
+                    PrefixPaths.Add(Folder);
+
+                Result = PrefixPaths.Distinct().Select(prefix => Path.Combine(prefix, SuffixPath)).FirstOrDefault(File.Exists);
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                List<string> PrefixPaths = new List<string>()
+                {
+                    "/usr/bin/",
+                    "/usr/share/applications/",
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local/share/applications/")                  
+                };
+
+                string[] FileNames = new string[] {
+                    "google-chrome-stable",
+                    "google-chrome",
+                    "chromium-browser",
+                    "chromium"
+                };
+
+                string FilePath;
+                foreach (var PrefixPath in PrefixPaths)
+                {
+                    foreach (var FileName in FileNames)
+                    {
+                        FilePath = Path.Combine(PrefixPath, FileName);
+
+                        if (File.Exists(FilePath))
+                        {
+                            Result = FilePath;
+                            break;
+                        }
+                    }
+                }
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                throw new PlatformNotSupportedException();
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD))
+            {
+                throw new PlatformNotSupportedException();
+            }
+
+            if (string.IsNullOrWhiteSpace(Result) || !File.Exists(Result))
+                throw new ApplicationException("Chrome not found");
+
+            return Result;
+ 
         }
         /// <summary>
-        /// Handles Chrome requests regarding static files, when this class is used with an ordinary HTML Application totally comprised of static files .
+        /// Handles Chrome requests of a non AspNet Core Application. 
+        /// <para>That is requests regarding static files, when this class is used with an ordinary HTML Application totally comprised of static files .</para>
         /// </summary>
-        static async void StaticRequestHandler(object sender, RequestEventArgs e)
+        static async void StaticAppRequestHandler(object sender, RequestEventArgs e)
         {
 
             ResponseData Data;
@@ -217,7 +289,7 @@ namespace Tripous
                     ContentFolder = Path.GetFullPath(Options.ContentFolder);
                 } 
 
-                HomeUrl = !IsAspNetCoreApp ? $@"http://{SStaticApp}/{Options.HomeUrl}" : $"http://localhost:{Port}"; 
+                HomeUrl = !IsAspNetCoreApp ? $@"http://{SStaticApp}:{Port}/{Options.HomeUrl}" : $"http://localhost:{Port}"; 
 
                 List<string> ArgList = new List<string>(DefaultArgs);
 
@@ -233,7 +305,7 @@ namespace Tripous
                     Devtools = false,
                     Headless = false,
                     Args = ArgList.ToArray(),
-                    ExecutablePath = !string.IsNullOrWhiteSpace(Options.ChromePath) ? Options.ChromePath : FindChromPath(),
+                    ExecutablePath = !string.IsNullOrWhiteSpace(Options.ChromePath) ? Options.ChromePath : GetChromPath(),
                     DefaultViewport = null
                 };
 
@@ -243,12 +315,12 @@ namespace Tripous
                 // get the main tab page
                 Page[] Pages = await Browser.PagesAsync().ConfigureAwait(false);
                 TabPage = Pages[0];
- 
-                // event handler for static files
+
+                // event handler for requests when this is a static app, meaning an ordinary HTML Application totally comprised of static files
                 if (!IsAspNetCoreApp)
                 {
                     await TabPage.SetRequestInterceptionAsync(true).ConfigureAwait(false);
-                    TabPage.Request += StaticRequestHandler;
+                    TabPage.Request += StaticAppRequestHandler;
                     await TabPage.GoToAsync(Chrome.HomeUrl, WaitUntilNavigation.DOMContentLoaded).ConfigureAwait(false);
                 }
  
@@ -282,10 +354,10 @@ namespace Tripous
         /// The single tab page of the browser where content is displayed.
         /// </summary>
         static public Page TabPage { get; private set; }
- 
+
         /// <summary>
         /// When true, indicates that this is an AspNet Core app.
-        /// <para>When false, indicates that this is a normal HTML "static" app, comprised of static files (html, javascript and css) </para>
+        /// <para>When false, indicates that this is a normal HTML "static" app, totally comprised of static files (html, javascript and css) </para>
         /// </summary>
         static public bool IsAspNetCoreApp { get; private set; }
         /// <summary>
@@ -313,7 +385,6 @@ namespace Tripous
     /// </summary>
     public class ChromeStartOptions
     {
-
         /// <summary>
         /// Constructor
         /// </summary>
@@ -358,8 +429,6 @@ namespace Tripous
         /// Optional. The initial height of the browser
         /// </summary>
         public int Height { get; set; } = 768;
-
-
     }
 
 
